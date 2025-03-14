@@ -1,64 +1,74 @@
 const express = require('express');
-const mysql = require('mysql2/promise');
+const mysql = require('mysql2');
 const cors = require('cors');
 
 const app = express();
-const port = 3000;
+const PORT = 3000;
 
-
+// Middleware
 app.use(express.json());
-app.use(cors());
+app.use(cors()); // Permitir peticiones desde el frontend
 
-
-const pool = mysql.createPool({
-    host: 'localhost',
-    user: 'root',
-    password: '', 
-    database: '',
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
+// Configuración de la base de datos
+const connection = mysql.createConnection({
+  host: 'localhost',
+  user: 'root',
+  password: 'alonsov1234',
+  database: 'todo_list'
 });
 
-async function conectar(consulta_sql, params = []) {
-    try {
-        const conexion = await pool.getConnection();
-        console.log("Conexión exitosa a la base de datos.");
-
-        const [rows] = await conexion.execute(consulta_sql, params);
-        conexion.release();
-        return rows;
-    } catch (error) {
-        console.error("Error al conectar a la base de datos:", error);
-        return null;
-    }
-}
-
-app.get('/tareas', async (req, res) => {
-    const resultado = await conectar("SELECT * FROM tareas");
-    res.json(resultado);
+// Conectar a MySQL
+connection.connect(err => {
+  if (err) {
+    console.error('Error de conexión a MySQL:', err);
+    return;
+  }
+  console.log('✅ Conectado a la base de datos MySQL');
 });
-app.post('/tareas', async (req, res) => {
-    const { nombre } = req.body;
-    if (!nombre) {
-        return res.status(400).json({ error: "El nombre de la tarea es obligatorio" });
+
+// **Endpoint para login**
+app.post('/login', (req, res) => {
+  const { correo, contrasena } = req.body;
+
+  const query = 'SELECT * FROM usuario WHERE correo = ? AND contrasena = ?';
+  connection.query(query, [correo, contrasena], (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: 'Error en el servidor' });
     }
 
-    await conectar("INSERT INTO tareas (nombre) VALUES (?)", [nombre]);
-    const nuevaTarea = await conectar("SELECT * FROM tareas ORDER BY id DESC LIMIT 1");
-    res.json(nuevaTarea[0]);
+    if (results.length > 0) {
+      res.json({ message: 'Login exitoso' });
+    } else {
+      res.status(401).json({ error: 'Credenciales incorrectas' });
+    }
+  });
 });
 
+// **Endpoint para registro**
+app.post('/register', (req, res) => {
+  const { nombre, correo, contrasena } = req.body;
 
-app.delete('/tareas/:id', async (req, res) => {
-    const { id } = req.params;
-    await conectar("DELETE FROM tareas WHERE id = ?", [id]);
-    res.json({ mensaje: "Tarea eliminada correctamente" });
+  const query = 'INSERT INTO usuario (nombre, correo, contrasena) VALUES (?, ?, ?)';
+  connection.query(query, [nombre, correo, contrasena], (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: 'Error al registrar usuario' });
+    }
+    res.json({ message: 'Cuenta creada con éxito' });
+  });
 });
 
-
-app.listen(port, () => {
-    console.log(`Servidor corriendo en http://localhost:${port}`);
+// **Endpoint para obtener tareas**
+app.get('/tareas', (req, res) => {
+  const query = 'SELECT * FROM tarea';
+  connection.query(query, (err, results) => {
+    if (err) {
+      return res.status(500).json({ error: 'Error al obtener tareas' });
+    }
+    res.json(results);
+  });
 });
 
-module.exports = app;
+// **Iniciar el servidor**
+app.listen(PORT, () => {
+  console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
+});
